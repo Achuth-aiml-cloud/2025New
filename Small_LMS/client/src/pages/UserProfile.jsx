@@ -1,51 +1,228 @@
-import React, { useState } from 'react';
-import { FaUserCircle, FaEdit, FaCertificate, FaBookmark, FaHistory, FaCog, FaSignOutAlt, FaLock, FaEnvelope, FaPhoneAlt, FaCalendarAlt, FaTrophy } from 'react-icons/fa';
-import Navbar from "../components/Navbar"
+import React, { useState, useEffect } from 'react';
+import { 
+  FaUserCircle, 
+  FaEdit, 
+  FaCog, 
+  FaSignOutAlt, 
+  FaLock, 
+  FaEnvelope, 
+  FaPhoneAlt, 
+  FaCalendarAlt,
+  FaFacebook,
+  FaTwitter,
+  FaLinkedin,
+  FaInstagram,
+  FaGithub
+} from 'react-icons/fa';
+import { getAuth, signOut } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import Navbar from "../components/Navbar";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const UserProfile = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
   
-  // Mock user data
+  // Initialize Firebase services
+  const auth = getAuth();
+  const db = getFirestore();
+  const navigate = useNavigate();
+  
+  // User profile data state
   const [userData, setUserData] = useState({
-    name: 'Sarah Johnson',
-    email: 'sarah.johnson@example.com',
-    phone: '+1 (555) 123-4567',
-    joinDate: 'August 2023',
-    bio: 'Passionate about continuous learning and personal development. Currently focused on expanding my knowledge in data science and machine learning.',
-    profileImage: null // We'll use a placeholder icon
+    name: '',
+    email: '',
+    phone: '',
+    joinDate: '',
+    bio: '',
+    interests: [],
+    socialMedia: {
+      facebook: '',
+      twitter: '',
+      linkedin: '',
+      instagram: '',
+      github: ''
+    },
+    profileImage: null
   });
 
-  // Mock course data
-  const enrolledCourses = [
-    { id: 1, title: 'Advanced Machine Learning', progress: 75, instructor: 'Dr. Alan Wong', lastAccessed: '2 days ago' },
-    { id: 2, title: 'Web Development Bootcamp', progress: 92, instructor: 'Jessica Martinez', lastAccessed: '1 week ago' },
-    { id: 3, title: 'Data Visualization Mastery', progress: 45, instructor: 'Michael Chen', lastAccessed: 'Today' }
-  ];
-
-  // Mock achievements
-  const achievements = [
-    { id: 1, title: 'Fast Learner', description: 'Completed 3 courses in one month', icon: <FaTrophy className="text-yellow-400" /> },
-    { id: 2, title: 'Perfect Score', description: 'Scored 100% on a course assessment', icon: <FaCertificate className="text-blue-400" /> },
-    { id: 3, title: 'Early Adopter', description: 'Among first 100 platform users', icon: <FaTrophy className="text-yellow-400" /> }
-  ];
-
-  // Mock bookmarked courses
-  const bookmarkedCourses = [
-    { id: 4, title: 'Introduction to AI Ethics', instructor: 'Dr. Emily Johnson' },
-    { id: 5, title: 'Advanced JavaScript Patterns', instructor: 'David Rodriguez' }
-  ];
-
-  // Input handler for editing profile
+  // New interest input state
+  const [newInterest, setNewInterest] = useState('');
+  
+  // Fetch user data from Firestore on component mount
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!auth.currentUser) {
+        navigate('/');
+        return;
+      }
+      
+      try {
+        const userRef = doc(db, "users", auth.currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+          // User data exists in Firestore
+          const data = userSnap.data();
+          setUserData({
+            name: data.name || auth.currentUser.displayName || '',
+            email: data.email || auth.currentUser.email || '',
+            phone: data.phone || '',
+            joinDate: data.joinDate ? new Date(data.joinDate.toDate()).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '',
+            bio: data.bio || '',
+            interests: data.interests || [],
+            socialMedia: data.socialMedia || {
+              facebook: '',
+              twitter: '',
+              linkedin: '',
+              instagram: '',
+              github: ''
+            },
+            profileImage: data.profileImage || null
+          });
+        } else {
+          // User doesn't have a profile document yet, create with defaults
+          const newUserData = {
+            name: auth.currentUser.displayName || '',
+            email: auth.currentUser.email || '',
+            phone: '',
+            joinDate: serverTimestamp(),
+            bio: '',
+            interests: [],
+            socialMedia: {
+              facebook: '',
+              twitter: '',
+              linkedin: '',
+              instagram: '',
+              github: ''
+            },
+            profileImage: null,
+            createdAt: serverTimestamp()
+          };
+          
+          // Create the user document
+          await setDoc(userRef, newUserData);
+          
+          // Set in state
+          setUserData({
+            ...newUserData,
+            joinDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        toast.error("Failed to load profile data");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserData();
+  }, [auth, db, navigate]);
+  
+  // Handle input change for form fields with focus preservation
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    
+    // Handle nested social media fields
+    if (name.startsWith('social_')) {
+      const socialPlatform = name.split('_')[1];
+      setUserData(prev => ({
+        ...prev,
+        socialMedia: {
+          ...prev.socialMedia,
+          [socialPlatform]: value
+        }
+      }));
+    } else {
+      // Handle regular fields
+      setUserData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+    
+    // Keep the focus on the current input after state update
+    // Use setTimeout to ensure this happens after the state update
+    setTimeout(() => {
+      e.target.focus();
+    }, 0);
+  };
+  
+  // Handle adding interests
+  const handleAddInterest = (e) => {
+    e.preventDefault();
+    if (newInterest.trim() === '') return;
+    
+    // Add interest if it doesn't already exist
+    if (!userData.interests.includes(newInterest.trim())) {
+      setUserData(prev => ({
+        ...prev,
+        interests: [...prev.interests, newInterest.trim()]
+      }));
+    }
+    
+    setNewInterest('');
+  };
+  
+  // Handle removing interests
+  const handleRemoveInterest = (interestToRemove) => {
     setUserData(prev => ({
       ...prev,
-      [name]: value
+      interests: prev.interests.filter(interest => interest !== interestToRemove)
     }));
   };
-
-  // Tab content components
+  
+  // Save profile changes to Firestore
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      
+      // Format data for Firestore
+      const updatedData = {
+        name: userData.name,
+        email: userData.email,
+        phone: userData.phone,
+        bio: userData.bio,
+        interests: userData.interests,
+        socialMedia: userData.socialMedia,
+        updatedAt: serverTimestamp()
+      };
+      
+      // Update document
+      await setDoc(userRef, updatedData, { merge: true });
+      
+      toast.success("Profile updated successfully");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast.error("Failed to update profile");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle user logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      toast.success("Logged out successfully");
+      setTimeout(() => {
+        navigate('/');
+      }, 1500);
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.error("Failed to log out");
+    }
+  };
+  
+  // Profile content component
   const ProfileContent = () => (
     <div className="bg-[#0A1045] bg-opacity-80 rounded-lg p-6 shadow-xl border border-blue-900">
       {!isEditing ? (
@@ -69,13 +246,15 @@ const UserProfile = () => {
               </div>
             </div>
             
-            <div className="flex items-center">
-              <FaPhoneAlt className="text-blue-400 mr-3" />
-              <div>
-                <p className="text-sm text-blue-300">Phone</p>
-                <p className="text-white">{userData.phone}</p>
+            {userData.phone && (
+              <div className="flex items-center">
+                <FaPhoneAlt className="text-blue-400 mr-3" />
+                <div>
+                  <p className="text-sm text-blue-300">Phone</p>
+                  <p className="text-white">{userData.phone}</p>
+                </div>
               </div>
-            </div>
+            )}
             
             <div className="flex items-center">
               <FaCalendarAlt className="text-blue-400 mr-3" />
@@ -86,9 +265,95 @@ const UserProfile = () => {
             </div>
           </div>
           
+          {userData.bio && (
+            <div className="mt-8">
+              <h3 className="text-xl font-semibold text-white mb-4">Bio</h3>
+              <p className="text-blue-200">{userData.bio}</p>
+            </div>
+          )}
+          
+          {userData.interests && userData.interests.length > 0 && (
+            <div className="mt-8">
+              <h3 className="text-xl font-semibold text-white mb-4">Interests</h3>
+              <div className="flex flex-wrap gap-2">
+                {userData.interests.map((interest, index) => (
+                  <span 
+                    key={index} 
+                    className="bg-blue-800 text-blue-200 px-3 py-1 rounded-full text-sm"
+                  >
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          
           <div className="mt-8">
-            <h3 className="text-xl font-semibold text-white mb-4">Bio</h3>
-            <p className="text-blue-200">{userData.bio}</p>
+            <h3 className="text-xl font-semibold text-white mb-4">Social Media</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {userData.socialMedia.facebook && (
+                <a 
+                  href={userData.socialMedia.facebook}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-200 transition"
+                >
+                  <FaFacebook className="mr-2" /> Facebook
+                </a>
+              )}
+              
+              {userData.socialMedia.twitter && (
+                <a 
+                  href={userData.socialMedia.twitter}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-200 transition"
+                >
+                  <FaTwitter className="mr-2" /> Twitter
+                </a>
+              )}
+              
+              {userData.socialMedia.linkedin && (
+                <a 
+                  href={userData.socialMedia.linkedin}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-200 transition"
+                >
+                  <FaLinkedin className="mr-2" /> LinkedIn
+                </a>
+              )}
+              
+              {userData.socialMedia.instagram && (
+                <a 
+                  href={userData.socialMedia.instagram}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-200 transition"
+                >
+                  <FaInstagram className="mr-2" /> Instagram
+                </a>
+              )}
+              
+              {userData.socialMedia.github && (
+                <a 
+                  href={userData.socialMedia.github}
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-200 transition"
+                >
+                  <FaGithub className="mr-2" /> GitHub
+                </a>
+              )}
+              
+              {!userData.socialMedia.facebook && 
+               !userData.socialMedia.twitter && 
+               !userData.socialMedia.linkedin && 
+               !userData.socialMedia.instagram && 
+               !userData.socialMedia.github && (
+                <p className="text-blue-400 col-span-2">No social media profiles added yet.</p>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -103,7 +368,7 @@ const UserProfile = () => {
             </button>
           </div>
           
-          <form className="space-y-4">
+          <form onSubmit={handleSaveProfile} className="space-y-4">
             <div>
               <label className="block text-blue-300 mb-1">Name</label>
               <input 
@@ -123,7 +388,9 @@ const UserProfile = () => {
                 value={userData.email}
                 onChange={handleInputChange}
                 className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                readOnly
               />
+              <p className="text-xs text-blue-400 mt-1">Email cannot be changed</p>
             </div>
             
             <div>
@@ -133,6 +400,7 @@ const UserProfile = () => {
                 name="phone" 
                 value={userData.phone}
                 onChange={handleInputChange}
+                placeholder="+1 (123) 456-7890"
                 className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -143,20 +411,134 @@ const UserProfile = () => {
                 name="bio" 
                 value={userData.bio}
                 onChange={handleInputChange}
+                placeholder="Tell us about yourself..."
                 rows="4"
                 className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
+            <div>
+              <label className="block text-blue-300 mb-1">Interests</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {userData.interests.map((interest, index) => (
+                  <div 
+                    key={index} 
+                    className="bg-blue-800 text-blue-200 px-3 py-1 rounded-full text-sm flex items-center"
+                  >
+                    {interest}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveInterest(interest)}
+                      className="ml-2 text-blue-400 hover:text-blue-300"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex">
+                <input 
+                  type="text" 
+                  value={newInterest}
+                  onChange={(e) => setNewInterest(e.target.value)}
+                  placeholder="Add a new interest"
+                  className="flex-grow bg-blue-900 bg-opacity-50 border border-blue-700 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddInterest}
+                  className="bg-blue-700 hover:bg-blue-600 text-white px-3 rounded-r-lg"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+            
+            <div className="border-t border-blue-800 pt-4 mt-4">
+              <h4 className="text-lg font-medium text-white mb-3">Social Media Links</h4>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="flex items-center text-blue-300 mb-1">
+                    <FaFacebook className="mr-2" /> Facebook
+                  </label>
+                  <input 
+                    type="url" 
+                    name="social_facebook" 
+                    value={userData.socialMedia.facebook}
+                    onChange={handleInputChange}
+                    placeholder="https://facebook.com/yourusername"
+                    className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center text-blue-300 mb-1">
+                    <FaTwitter className="mr-2" /> Twitter
+                  </label>
+                  <input 
+                    type="url" 
+                    name="social_twitter" 
+                    value={userData.socialMedia.twitter}
+                    onChange={handleInputChange}
+                    placeholder="https://twitter.com/yourusername"
+                    className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center text-blue-300 mb-1">
+                    <FaLinkedin className="mr-2" /> LinkedIn
+                  </label>
+                  <input 
+                    type="url" 
+                    name="social_linkedin" 
+                    value={userData.socialMedia.linkedin}
+                    onChange={handleInputChange}
+                    placeholder="https://linkedin.com/in/yourusername"
+                    className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center text-blue-300 mb-1">
+                    <FaInstagram className="mr-2" /> Instagram
+                  </label>
+                  <input 
+                    type="url" 
+                    name="social_instagram" 
+                    value={userData.socialMedia.instagram}
+                    onChange={handleInputChange}
+                    placeholder="https://instagram.com/yourusername"
+                    className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center text-blue-300 mb-1">
+                    <FaGithub className="mr-2" /> GitHub
+                  </label>
+                  <input 
+                    type="url" 
+                    name="social_github" 
+                    value={userData.socialMedia.github}
+                    onChange={handleInputChange}
+                    placeholder="https://github.com/yourusername"
+                    className="w-full bg-blue-900 bg-opacity-50 border border-blue-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            
             <div className="pt-4">
               <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  setIsEditing(false);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition duration-300"
+                type="submit"
+                disabled={loading}
+                className={`bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition duration-300 ${
+                  loading ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
               >
-                Save Changes
+                {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </form>
@@ -165,73 +547,7 @@ const UserProfile = () => {
     </div>
   );
 
-  const CoursesContent = () => (
-    <div className="space-y-6">
-      <div className="bg-[#0A1045] bg-opacity-80 rounded-lg p-6 shadow-xl border border-blue-900">
-        <h3 className="text-xl font-semibold text-white mb-6">My Enrolled Courses</h3>
-        
-        {enrolledCourses.map(course => (
-          <div key={course.id} className="mb-6 last:mb-0">
-            <div className="flex justify-between items-center mb-2">
-              <h4 className="text-lg font-medium text-white">{course.title}</h4>
-              <span className="text-sm text-blue-300">Last accessed: {course.lastAccessed}</span>
-            </div>
-            
-            <p className="text-blue-200 mb-2">Instructor: {course.instructor}</p>
-            
-            <div className="w-full bg-blue-900 rounded-full h-4 mb-2">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-blue-400 h-4 rounded-full"
-                style={{ width: `${course.progress}%` }}
-              ></div>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-blue-300">{course.progress}% Complete</span>
-              <a href="#" className="text-blue-400 hover:text-blue-300 transition duration-300">Continue Learning</a>
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      <div className="bg-[#0A1045] bg-opacity-80 rounded-lg p-6 shadow-xl border border-blue-900">
-        <h3 className="text-xl font-semibold text-white mb-6">Bookmarked Courses</h3>
-        
-        {bookmarkedCourses.map(course => (
-          <div key={course.id} className="flex justify-between items-center mb-4 last:mb-0">
-            <div>
-              <h4 className="text-lg font-medium text-white">{course.title}</h4>
-              <p className="text-blue-200">Instructor: {course.instructor}</p>
-            </div>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition duration-300">
-              Enroll Now
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const AchievementsContent = () => (
-    <div className="bg-[#0A1045] bg-opacity-80 rounded-lg p-6 shadow-xl border border-blue-900">
-      <h3 className="text-xl font-semibold text-white mb-6">My Achievements</h3>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {achievements.map(achievement => (
-          <div key={achievement.id} className="bg-blue-900 bg-opacity-50 rounded-lg p-4 border border-blue-800 hover:border-blue-600 transition duration-300">
-            <div className="flex items-center mb-3">
-              <div className="w-10 h-10 flex items-center justify-center bg-blue-800 rounded-full mr-3">
-                {achievement.icon}
-              </div>
-              <h4 className="text-lg font-medium text-white">{achievement.title}</h4>
-            </div>
-            <p className="text-blue-200">{achievement.description}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
+  // Settings content component
   const SettingsContent = () => (
     <div className="bg-[#0A1045] bg-opacity-80 rounded-lg p-6 shadow-xl border border-blue-900">
       <h3 className="text-xl font-semibold text-white mb-6">Account Settings</h3>
@@ -301,15 +617,11 @@ const UserProfile = () => {
     </div>
   );
 
-  // Render the appropriate content based on active tab
+  // Render different content based on active tab
   const renderContent = () => {
     switch(activeTab) {
       case 'profile':
         return <ProfileContent />;
-      case 'courses':
-        return <CoursesContent />;
-      case 'achievements':
-        return <AchievementsContent />;
       case 'settings':
         return <SettingsContent />;
       default:
@@ -317,8 +629,17 @@ const UserProfile = () => {
     }
   };
 
+  if (loading && !userData.email) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#050A30] to-[#0A1045] flex items-center justify-center">
+        <div className="text-white text-xl">Loading profile...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#050A30] to-[#0A1045]">
+      <ToastContainer position="top-right" autoClose={3000} />
       <Navbar />
       
       {/* Profile Header */}
@@ -341,11 +662,11 @@ const UserProfile = () => {
               <div className="text-center md:text-left">
                 <h2 className="text-3xl font-bold text-white mb-2">{userData.name}</h2>
                 <div className="inline-block px-3 py-1 rounded-full bg-blue-800 bg-opacity-50 text-blue-200 text-sm font-medium mb-4">
-                  Premium Member
+                  Questor Member
                 </div>
-                <p className="text-blue-200 max-w-lg">
-                  {userData.bio}
-                </p>
+                {userData.bio && (
+                  <p className="text-blue-200 max-w-lg">{userData.bio}</p>
+                )}
               </div>
             </div>
           </div>
@@ -374,32 +695,6 @@ const UserProfile = () => {
                 </li>
                 <li>
                   <button
-                    onClick={() => setActiveTab('courses')}
-                    className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${
-                      activeTab === 'courses' 
-                        ? 'bg-blue-700 text-white' 
-                        : 'text-blue-200 hover:bg-blue-800 hover:text-white'
-                    } transition duration-300`}
-                  >
-                    <FaBookmark className="mr-3" />
-                    My Courses
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveTab('achievements')}
-                    className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${
-                      activeTab === 'achievements' 
-                        ? 'bg-blue-700 text-white' 
-                        : 'text-blue-200 hover:bg-blue-800 hover:text-white'
-                    } transition duration-300`}
-                  >
-                    <FaCertificate className="mr-3" />
-                    Achievements
-                  </button>
-                </li>
-                <li>
-                  <button
                     onClick={() => setActiveTab('settings')}
                     className={`w-full text-left px-4 py-3 rounded-lg flex items-center ${
                       activeTab === 'settings' 
@@ -414,7 +709,10 @@ const UserProfile = () => {
               </ul>
               
               <div className="mt-8 pt-6 border-t border-blue-800">
-                <button className="w-full px-4 py-3 rounded-lg flex items-center text-red-400 hover:bg-red-900 hover:bg-opacity-30 hover:text-red-300 transition duration-300">
+                <button 
+                  onClick={handleLogout}
+                  className="w-full px-4 py-3 rounded-lg flex items-center text-red-400 hover:bg-red-900 hover:bg-opacity-30 hover:text-red-300 transition duration-300"
+                >
                   <FaSignOutAlt className="mr-3" />
                   Logout
                 </button>
