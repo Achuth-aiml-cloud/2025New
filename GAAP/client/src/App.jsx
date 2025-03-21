@@ -4,6 +4,9 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import LandingPage from './pages/LandingPage'
 import RequestingPage from './pages/RequestingPage'
+import PricingPage from './pages/PricingPage'
+import DocumentationPage from './pages/DocumentationPage'
+import Dashboard from './pages/Dashboard'
 
 const App = () => {
   return (
@@ -12,7 +15,10 @@ const App = () => {
         <Route path='/' element={<LoginPage />} />
         <Route path='/register' element={<RegisterPage />} />
         <Route path='/home' element={<LandingPage />} />
+        <Route path='/pricing' element={<PricingPage />} />
         <Route path='/requesting' element={<RequestingPage />} />
+        <Route path='/docs' element={<DocumentationPage />} />
+        <Route path='/dashboard' element={<Dashboard />} />
       </Routes>
     </div>
   )
